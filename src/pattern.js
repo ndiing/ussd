@@ -5,18 +5,10 @@ class USSDPattern extends URLPattern {
         super(input, USSDPattern.baseURL);
     }
 
-    /**
-     * @param {String} input
-     * @returns {URLPatternResult}
-     */
     exec(input) {
         return super.exec(input, USSDPattern.baseURL);
     }
 
-    /**
-     * @param {String} input
-     * @returns {URLPatternResult}
-     */
     test(input) {
         return super.test(input, USSDPattern.baseURL);
     }

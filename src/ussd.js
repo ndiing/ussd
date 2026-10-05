@@ -1,48 +1,53 @@
-const { History } = require("./history");
-const { USSDNode } = require("./node");
-
-/**
- * @typedef USSDNavigation
- * @property {USSDNode} back
- * @property {USSDNode} next
- * @property {USSDNode} prev
- * @property {USSDNode} quit
- */
+const EventEmitter = require("events");
+const { USSDNode } = require("./node.js");
 
 /**
  * @typedef USSDOptions
- * @property {EventEmitter} event
- * @property {USSDNavigation} navigation
- * @property {Number} timeout - Network Timeout between 20 and 180 seconds
+ * @property {Object<string, USSDNode>} navigation
+ * @property {Number} [messageLength=120]
+ * @property {Function} menuCompareFn
+ * @property {USSDNode} timeout
+ * @property {Number} [timeoutMs=60_000]
  */
 
-class USSD {
+class USSD extends EventEmitter {
     /**
      * @param {USSDNode[]} routes
      * @param {USSDOptions} options
      */
-    constructor(routes, options) {
-        const { event, navigation, timeout = 60_000 } = options;
+    constructor(routes, options = {}) {
+        super();
+        this.setMaxListeners(0);
 
-        this.routes = routes;
+        const { navigation, messageLength = 120, menuCompareFn, timeout, timeoutMs = 60_000 } = options;
 
-        this.event = event;
+        this.originalRoutes = routes;
+        this.routes = this.cloneRoutes(this.originalRoutes);
         this.navigation = navigation;
+        this.messageLength = messageLength;
+        this.menuCompareFn = menuCompareFn;
         this.timeout = timeout;
+        this.timeoutMs = timeoutMs;
 
-        this.history = new History();
+        this.inputs = [];
     }
 
-    /**
-     * @param {String} text
-     * @param {Number} [length=120]
-     * @returns {Array}
-     */
-    split(text, length = 120) {
-        const parts = [];
+    cloneRoutes(routes) {
+        return routes.map((route) => this.cloneNode(route));
+    }
 
+    cloneNode(route) {
+        const node = new USSDNode([route.value, route.label], route.handler);
+        for (const child of route.children) {
+            node.add(this.cloneNode(child));
+        }
+        return node;
+    }
+
+    split(message, length = this.messageLength) {
+        const parts = [];
         let buff = "";
-        for (const word of text.split(" ")) {
+        for (const word of message.split(" ")) {
             const part = buff ? buff + " " + word : word;
             if (part.length > length) {
                 parts.push(buff);
@@ -51,84 +56,48 @@ class USSD {
                 buff = part;
             }
         }
-
         if (buff) parts.push(buff);
-
         return parts;
     }
 
     /**
      * @param {USSDNode} node
-     * @param {String} text
+     * @param {String} message
      * @returns {USSDNode}
      */
-    paginate(node, text) {
-        const parts = this.split(text);
+    paginate(node, message) {
+        const parts = this.split(message);
 
-        node.setText(parts[0]);
+        node.setMessage(parts[0]);
 
         const total = parts.length;
         if (total > 1) {
             if (!node.clonedChildren) {
                 node.clonedChildren = [...node.children];
             }
-
             node.children.length = 0;
+
             node.add(this.navigation.quit);
 
             let curr = node;
             for (let i = 1; i < total; i++) {
                 const node = curr.add(new USSDNode([this.navigation.next.value, this.navigation.next.label], parts[i]));
-                if (i > 0) node.add(this.navigation.prev);
+                node.add(this.navigation.prev);
                 node.add(this.navigation.quit);
                 curr = node;
             }
 
             for (const child of node.clonedChildren) {
-                child.parent = curr;
-                curr.children.push(child);
+                curr.add(child);
             }
         }
 
         return node;
     }
 
-    getMove(input) {
-        let move = "next";
-        for (const name in this.navigation) {
-            const node = this.navigation[name];
-            if (node.pattern.test(input) && this.node && this.node.children.some((child) => child.pattern.test(input))) {
-                move = name;
-                break;
-            }
-        }
-        return move;
-    }
-
-    // getNode(req) {
-    //     let node;
-    //     let routes = [...this.routes];
-    //     for (const input of this.history.data) {
-    //         for (const route of routes) {
-    //             const match = route.pattern.exec(input);
-    //             if (match) {
-    //                 node = route;
-    //                 req.params = { ...req.params, ...match.pathname.groups };
-    //                 break;
-    //             }
-    //         }
-
-    //         if (!node) break;
-
-    //         routes = node.children;
-    //     }
-    //     return node;
-    // }
-
-    getNode(req) {
-        let node;
-        let routes = [...this.routes];
-        for (const input of this.history.data) {
+    setRoute(req) {
+        let routes = this.routes;
+        for (const input of this.inputs) {
             let matched = null;
             for (const route of routes) {
                 const match = route.pattern.exec(input);
@@ -138,62 +107,73 @@ class USSD {
                     break;
                 }
             }
-            if (!matched) continue;
-            node = matched;
+
+            if (!matched) {
+                this.inputs.splice(-1);
+                continue;
+            }
+
+            this.route = matched;
             routes = matched.children;
         }
-        return node;
     }
 
-    /**
-     * @param {String} input
-     */
-    request(input) {
+    setTimeout(req, res) {
+        this.clearTimeout();
+        this.requestTimeout = setTimeout(async () => {
+            this.route = this.timeout;
+            await this.route.handler(req, res);
+        }, this.timeoutMs);
+    }
+
+    clearTimeout() {
+        clearTimeout(this.requestTimeout);
+    }
+
+    async resolve(req, res) {
+        this.setRoute(req);
+
+        this.setTimeout(req, res);
+
+        res.send = (message) => {
+            const arr = [];
+
+            if (message) this.paginate(this.route, message);
+
+            if (this.route.message) arr.push(this.route.message);
+
+            const menu = this.route.getMenu(this.menuCompareFn);
+            if (menu) arr.push(menu);
+
+            this.emit("response", arr.join("\n"));
+        };
+
+        res.back = async () => {
+            this.inputs.splice(-2);
+
+            await this.resolve(req, res);
+        };
+
+        res.end = async (message) => {
+            this.clearTimeout();
+            res.send(message);
+            this.route = null;
+            this.routes = this.cloneRoutes(this.originalRoutes);
+            this.inputs.length = 0;
+        };
+
+        await this.route.handler(req, res);
+    }
+
+    async request(input) {
         const req = { params: {} };
         const res = {};
 
-        clearTimeout(this.requestTimeout);
-        this.requestTimeout = setTimeout(() => {
-            res.end("error-code1");
-        }, this.timeout);
+        const inputs = input.match(/^\*?(.*?)#?$/)[1].split("*");
+        if (inputs.length > 1) this.inputs = inputs;
+        else this.inputs.push(inputs[0]);
 
-        const move = this.getMove(input);
-
-        if (move === "back" || move === "prev") {
-            this.history.back();
-        } else if (move === "next" || move === "quit") {
-            this.history.forward(input);
-        }
-
-        /**@type {USSDNode[]}*/
-        const node = this.getNode(req);
-
-        res.send = (text) => {
-            const chunks = [];
-
-            if (text) this.paginate(node, text);
-
-            if (node.text) chunks.push(node.text);
-
-            const menu = node.getMenu();
-            if (menu) chunks.push(menu);
-
-            this.event.send(chunks.join("\n"));
-        };
-
-        res.end = (text) => {
-            clearTimeout(this.requestTimeout);
-            this.history.clear();
-            res.send(text);
-        };
-
-        node.handler(req, res);
-
-        this.node = node;
-
-        if (move === "quit") {
-            this.history.clear();
-        }
+        await this.resolve(req, res);
     }
 }
 
