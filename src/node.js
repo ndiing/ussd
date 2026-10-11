@@ -1,11 +1,11 @@
-const { USSDPattern } = require("./pattern.js");
+const { Pattern } = require("./pattern.js");
 
-class USSDNode {
+class Node {
     constructor(pattern, handler) {
         const [value, label] = Array.isArray(pattern) ? pattern : [pattern];
         if (value) {
             this.value = value;
-            this.pattern = new USSDPattern(value);
+            this.pattern = new Pattern(value);
         }
 
         if (label) this.label = label;
@@ -22,8 +22,8 @@ class USSDNode {
     }
 
     /**
-     * @param {USSDNode} child
-     * @returns {USSDNode}
+     * @param {Node} child
+     * @returns {Node}
      */
     add(child) {
         child.parent = this;
@@ -56,4 +56,4 @@ class USSDNode {
         this.message = message;
     }
 }
-module.exports.USSDNode = USSDNode;
+module.exports.Node = Node;

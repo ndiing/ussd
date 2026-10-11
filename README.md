@@ -4,7 +4,7 @@ Library Node.js untuk membangun menu **USSD** berbasis pohon (tree) dengan routi
 
 ## Fitur
 
-- Menu bertingkat dengan `USSDNode` (parent → children)
+- Menu bertingkat dengan `Node` (parent → children)
 - Routing berbasis [`URLPattern`](https://developer.mozilla.org/en-US/docs/Web/API/URLPattern), mendukung parameter dinamis (`:nominal`) dan wildcard (`*`)
 - `res.send()`, `res.back()`, `res.end()` yang familiar
 - Pagination otomatis jika pesan melebihi `messageLength` (Next / Previous / Quit)
@@ -26,24 +26,24 @@ npm install @ndiinginc/ussd
 ## Quick Start
 
 ```js
-const { USSD, USSDNode } = require("@ndiinginc/ussd");
+const { USSD, Node } = require("@ndiinginc/ussd");
 
 // Node navigasi (dipakai untuk pagination)
 const navigation = {
-    next: new USSDNode(["97", "Next"]),
-    prev: new USSDNode(["96", "Previous"], (req, res) => res.back()),
-    quit: new USSDNode(["98", "Quit"], (req, res) => res.end("Terima kasih.")),
+    next: new Node(["97", "Next"]),
+    prev: new Node(["96", "Previous"], (req, res) => res.back()),
+    quit: new Node(["98", "Quit"], (req, res) => res.end("Terima kasih.")),
 };
 
 // Dipanggil saat sesi timeout
-const timeout = new USSDNode("*", (req, res) => res.end("Sesi berakhir."));
+const timeout = new Node("*", (req, res) => res.end("Sesi berakhir."));
 
 // *808#
-const root = new USSDNode("808", (req, res) => res.send("Selamat datang"));
-root.add(new USSDNode(["1", "Cek Pulsa"], (req, res) => res.end("Pulsa Anda Rp10.000")));
+const root = new Node("808", (req, res) => res.send("Selamat datang"));
+root.add(new Node(["1", "Cek Pulsa"], (req, res) => res.end("Pulsa Anda Rp10.000")));
 
-const info = root.add(new USSDNode(["2", "Info"]));
-info.add(new USSDNode(["0", "Kembali"], (req, res) => res.back()));
+const info = root.add(new Node(["2", "Info"]));
+info.add(new Node(["0", "Kembali"], (req, res) => res.back()));
 
 // Satu instance USSD = satu sesi pengguna
 const ussd = new USSD([root], { navigation, timeout });
@@ -68,7 +68,7 @@ Selamat datang
 
 ### Routing
 
-Setiap `USSDNode` punya `pattern` yang dicocokkan terhadap input pada levelnya. Input diproses berurutan dari root: `*808*7*1#` → `808` → `7` → `1`.
+Setiap `Node` punya `pattern` yang dicocokkan terhadap input pada levelnya. Input diproses berurutan dari root: `*808*7*1#` → `808` → `7` → `1`.
 
 | Pattern    | Cocok dengan                          |
 | ---------- | ------------------------------------- |
@@ -91,10 +91,10 @@ Urutan default: ascending berdasarkan angka, dengan `0` selalu paling bawah (coc
 
 ```js
 node6
-    .add(new USSDNode(["4", "Bagi Pulsa"], (req, res) => res.send("Masukkan no tujuan")))
-    .add(new USSDNode(":tujuan", (req, res) => res.send(`Tujuan ${req.params.tujuan}. Masukkan nominal`)))
+    .add(new Node(["4", "Bagi Pulsa"], (req, res) => res.send("Masukkan no tujuan")))
+    .add(new Node(":tujuan", (req, res) => res.send(`Tujuan ${req.params.tujuan}. Masukkan nominal`)))
     .add(
-        new USSDNode(":nominal", (req, res) => {
+        new Node(":nominal", (req, res) => {
             const { tujuan, nominal } = req.params;
             res.end(`Bagi pulsa ${nominal} ke ${tujuan} diproses.`);
         }),
@@ -111,7 +111,7 @@ Setiap request me-reset timer. Jika tidak ada request selama `timeoutMs` (defaul
 
 ## API
 
-### `new USSDNode(pattern, handler?)`
+### `new Node(pattern, handler?)`
 
 | Parameter | Tipe | Keterangan |
 | --- | --- | --- |
@@ -131,7 +131,7 @@ Method:
 | `navigation` | `{ next, prev, quit }` | - | Node untuk pagination. Wajib jika pesan bisa melebihi `messageLength`. |
 | `messageLength` | `number` | `120` | Panjang maksimum karakter per halaman |
 | `menuCompareFn` | `(a, b) => number` | angka asc, `0` terakhir | Pengurutan menu |
-| `timeout` | `USSDNode` | - | Node yang dijalankan saat timeout |
+| `timeout` | `Node` | - | Node yang dijalankan saat timeout |
 | `timeoutMs` | `number` | `60000` | Durasi timeout (ms) |
 
 Method & event:

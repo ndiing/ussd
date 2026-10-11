@@ -1,18 +1,18 @@
 const EventEmitter = require("events");
-const { USSDNode } = require("./node.js");
+const { Node } = require("./node.js");
 
 /**
  * @typedef USSDOptions
- * @property {Object<string, USSDNode>} navigation
+ * @property {Object<string, Node>} navigation
  * @property {Number} [messageLength=120]
  * @property {Function} menuCompareFn
- * @property {USSDNode} timeout
+ * @property {Node} timeout
  * @property {Number} [timeoutMs=60_000]
  */
 
 class USSD extends EventEmitter {
     /**
-     * @param {USSDNode[]} routes
+     * @param {Node[]} routes
      * @param {USSDOptions} options
      */
     constructor(routes, options = {}) {
@@ -37,7 +37,7 @@ class USSD extends EventEmitter {
     }
 
     cloneNode(route) {
-        const node = new USSDNode([route.value, route.label], route.handler);
+        const node = new Node([route.value, route.label], route.handler);
         for (const child of route.children) {
             node.add(this.cloneNode(child));
         }
@@ -61,9 +61,9 @@ class USSD extends EventEmitter {
     }
 
     /**
-     * @param {USSDNode} node
+     * @param {Node} node
      * @param {String} message
-     * @returns {USSDNode}
+     * @returns {Node}
      */
     paginate(node, message) {
         const parts = this.split(message);
@@ -81,7 +81,7 @@ class USSD extends EventEmitter {
 
             let curr = node;
             for (let i = 1; i < total; i++) {
-                const node = curr.add(new USSDNode([this.navigation.next.value, this.navigation.next.label], parts[i]));
+                const node = curr.add(new Node([this.navigation.next.value, this.navigation.next.label], parts[i]));
                 node.add(this.navigation.prev);
                 node.add(this.navigation.quit);
                 curr = node;
@@ -96,6 +96,7 @@ class USSD extends EventEmitter {
     }
 
     setRoute(req) {
+        req.params={}
         let routes = this.routes;
         for (const input of this.inputs) {
             let matched = null;
@@ -103,7 +104,7 @@ class USSD extends EventEmitter {
                 const match = route.pattern.exec(input);
                 if (match) {
                     matched = route;
-                    req.params = { ...req.params, ...match.pathname.groups };
+                    req.params=Object.assign(req.params,match.groups)
                     break;
                 }
             }
@@ -178,6 +179,6 @@ class USSD extends EventEmitter {
 }
 
 module.exports = {
-    USSDNode,
+    Node,
     USSD,
 };

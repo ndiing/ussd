@@ -1,16 +1,34 @@
-class USSDPattern extends URLPattern {
-    static baseURL = "http://localhost";
-
+/**
+ * @typedef {Object} PatternExec
+ * @property {number} index - The zero-based index of the match in the input string.
+ * @property {string} input - The original input string.
+ * @property {Object.<string, string>} [groups] - Named capture groups, or undefined.
+ */
+class Pattern {
     constructor(input) {
-        super(input, USSDPattern.baseURL);
-    }
+        const pattern = input
+            .replace(/[.+*?^${}()|[\]\\]/g, "\\$&")
+            .replace(/:(\w+)/g, "(?<$1>[^/]+)")
+            .replace(/\\\*/g, ".*");
 
-    exec(input) {
-        return super.exec(input, USSDPattern.baseURL);
+        Object.defineProperty(this, "re", {
+            value: new RegExp(`^${pattern}$`),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+        });
     }
 
     test(input) {
-        return super.test(input, USSDPattern.baseURL);
+        return this.re.test(input);
+    }
+
+    /**
+     * @param {String} input
+     * @returns {PatternExec | null}
+     */
+    exec(input) {
+        return this.re.exec(input);
     }
 }
-exports.USSDPattern = USSDPattern;
+exports.Pattern = Pattern;
